@@ -1,0 +1,10 @@
+AES_KEY: "0123456789abcdef0123456789abcdef"
+WEBWALKER_URL: "http://localhost:3003/api"
+VALERIA_URL: "http://localhost:3004/api"
+POLL_INTERVAL_SECONDS: 5
+POLL_TIMEOUT_SECONDS: 180
+RETRY_ATTEMPTS: 3
+RETRY_BACKOFF_FACTOR: 2
+# List of valid Next-Out tokens
+NEXTOUT_TOKENS:
+  - "valid-token-placeholder"
