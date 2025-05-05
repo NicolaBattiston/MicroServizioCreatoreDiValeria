@@ -35,10 +35,23 @@ def load_tokens():
     else:
         VALID_NEXTOUT_TOKENS = []
 
-@api.before_app_first_request
-def setup_auth():
-    # Populate valid tokens from config
+def create_app(use_mocks: bool = False) -> Flask:
+    global config, mock_webwalker
+    config = load_config()
+    # load tokens immediately, rather than via a decorator
     load_tokens()
+    if use_mocks:
+        mock_webwalker = MockWebWalker()
+        app.config['USE_MOCKS'] = True
+    else:
+        app.config['USE_MOCKS'] = False
+
+    # Register blueprint
+    app.register_blueprint(api, url_prefix='/api')
+
+    
+
+    return app
 
 @api.before_request
 def authenticate():
@@ -67,22 +80,28 @@ def start():
         # Invoke WebWalker (mock or real)
         if app.config.get('USE_MOCKS'):
             logger.info(f"[Mock] Starting WebWalker for job_id: {job_id}")
-            result = mock_webwalker.process_job(job_id)
+            webwalking_result = mock_webwalker.process_job(job_id)
         else:
             logger.info(f"[Real] Starting WebWalker for job_id: {job_id}")
-            result = start_webwalk(job_id, config['WEBWALKER_URL'])
+            webwalking_result = start_webwalk(job_id, config['WEBWALKER_URL'])
 
         # Validate response
-        company_id = result.get('company_id')
-        company_name = result.get('company_name')
+        company_id = webwalking_result.get('company_id')
+        company_name = webwalking_result.get('company_name')
         if not company_id or not company_name:
             return jsonify({'status': 'failed', 'job_id': job_id, 'error': 'Missing company_id or company_name in response'}), 500
 
         # Configure company
-        configure_company(result, config['VALERIA_URL'])
+        if app.config.get('USE_MOCKS'):
+            pass
+        else:
+            configure_company(webwalking_result, config['VALERIA_URL'])
         # Import vector data if present
-        if 'vector_data' in result:
-            import_vector_json(company_id, result['vector_data'], config['VALERIA_URL'])
+        if 'vector_data' in webwalking_result:
+            if app.config.get('USE_MOCKS'):
+                    pass
+            else:
+                import_vector_json(company_id, webwalking_result['vector_data'], config['VALERIA_URL'])
 
         # Generate encrypted link
         link = generate_custom_link(company_name, config['AES_KEY'])
@@ -96,16 +115,7 @@ def start():
         job = data.get('job_id') if 'data' in locals() else ''
         return jsonify({'status': 'failed', 'job_id': job, 'error': str(e)}), 500
 
-def create_app(use_mocks: bool = False) -> Flask:
-    global config, mock_webwalker
-    config = load_config()
-    if use_mocks:
-        mock_webwalker = MockWebWalker()
-        app.config['USE_MOCKS'] = True
-    else:
-        app.config['USE_MOCKS'] = False
-    app.register_blueprint(api, url_prefix='/api')
-    return app
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Flask microservice')
